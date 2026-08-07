@@ -12,6 +12,7 @@
 #endif
 
 #ifdef __APPLE__
+#include <TargetConditionals.h>
 #include <CoreFoundation/CoreFoundation.h>
 #endif
 
@@ -95,7 +96,7 @@ public:
     }
 	CCPAssertResult Run()
 	{
-#ifdef __APPLE__
+#if defined( __APPLE__ ) && TARGET_OS_OSX
         const char* title = "Assertion Failed";
         
         CFStringRef messageRef = CFStringCreateWithCString( nullptr, m_msg, kCFStringEncodingASCII );

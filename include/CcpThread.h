@@ -30,6 +30,19 @@
 	{
 		sched_yield();
 	}
+#elif __ANDROID__
+	#include <pthread.h>
+	#include <sched.h>
+	#include <sys/types.h>
+	// bionic identifies a thread by its kernel tid, where Mach uses a port name. Both are
+	// opaque integers used only for comparison and logging, so pid_t serves the same role.
+	typedef pid_t CcpThreadId_t;
+	typedef pthread_t CcpThreadHandle_t;
+
+	inline void CcpThreadYield()
+	{
+		sched_yield();
+	}
 #else
 #error "Unsupported platform!"
 #endif

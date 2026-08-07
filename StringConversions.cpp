@@ -28,6 +28,7 @@ std::string WideToUTF8( const wchar_t* wideString )
 #else
 
 #include <wchar.h>
+#include <stdlib.h>
 #include <string.h>
 #include "CCPMemory.h"
 
@@ -102,5 +103,53 @@ void BlueConvertAsciiToWide::Init( const char* src )
 	mbsrtowcs( m_converted, &src, srcLen, nullptr );
 	m_converted[sizeNeeded] = 0;
 }
+
+#ifndef __APPLE__
+
+// On Apple these two live in StringConversions.mm, which CMakeLists.txt only compiles
+// under if(APPLE), so every other non-Windows platform links with them missing.
+//
+// The .mm implementation converts through NSString using UTF32LE, i.e. it assumes a
+// 4-byte wchar_t. bionic agrees, and its only supported locale is C.UTF-8, so the
+// standard multibyte routines already perform exactly UTF-8 <-> UTF-32 here. That is
+// the same assumption the BlueConvert* classes above already make with wcsrtombs.
+
+std::wstring UTF8ToWide( const char* utf8String )
+{
+	if( utf8String == nullptr )
+	{
+		return std::wstring();
+	}
+
+	size_t sizeNeeded = mbstowcs( nullptr, utf8String, 0 );
+	if( sizeNeeded == (size_t)-1 )
+	{
+		return std::wstring();
+	}
+
+	std::wstring result( sizeNeeded, L'\0' );
+	mbstowcs( &result[0], utf8String, sizeNeeded );
+	return result;
+}
+
+std::string WideToUTF8( const wchar_t* wideString )
+{
+	if( wideString == nullptr )
+	{
+		return std::string();
+	}
+
+	size_t sizeNeeded = wcstombs( nullptr, wideString, 0 );
+	if( sizeNeeded == (size_t)-1 )
+	{
+		return std::string();
+	}
+
+	std::string result( sizeNeeded, '\0' );
+	wcstombs( &result[0], wideString, sizeNeeded );
+	return result;
+}
+
+#endif
 
 #endif

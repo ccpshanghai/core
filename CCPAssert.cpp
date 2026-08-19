@@ -201,5 +201,36 @@ bool CcpIsDebuggerPresent()
     return IsDebuggerPresent() != 0;
 }
 
+#elif __ANDROID__
+
+#include <cstdio>
+#include <cstring>
+
+// Linux has no P_TRACED flag to read and no IsDebuggerPresent. The tracer, if any, is named
+// in /proc/self/status as TracerPid, which is 0 when nothing is attached. This is what every
+// Android debugger check does, and it costs one small read.
+bool CcpIsDebuggerPresent()
+{
+    FILE* status = fopen( "/proc/self/status", "r" );
+    if( !status )
+    {
+        return false;
+    }
+
+    bool traced = false;
+    char line[256];
+    while( fgets( line, sizeof( line ), status ) )
+    {
+        if( strncmp( line, "TracerPid:", 10 ) == 0 )
+        {
+            traced = atoi( line + 10 ) != 0;
+            break;
+        }
+    }
+
+    fclose( status );
+    return traced;
+}
+
 #endif
 

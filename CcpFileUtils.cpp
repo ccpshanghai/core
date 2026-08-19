@@ -220,6 +220,9 @@ bool CcpRenameFile( const std::wstring& src, const std::wstring& dst )
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #endif
+#ifdef __ANDROID__
+#include <limits.h>
+#endif
 #endif
 
 #ifdef _WIN32
@@ -738,6 +741,21 @@ std::wstring CcpExecutablePath()
     char actualpath [PATH_MAX];
     char* path = realpath(&tmp[0], actualpath);
     return std::wstring( CA2W( actualpath ) );
+#elif defined(__ANDROID__)
+    // No _NSGetExecutablePath outside Apple. /proc/self/exe is the Linux and bionic
+    // equivalent, and is already the resolved path, so realpath only normalises it.
+    // readlink does not terminate, and returns -1 rather than 0 on failure.
+    std::vector<char> tmp( CCP_MAX_PATH );
+    ssize_t written = readlink( "/proc/self/exe", &tmp[0], tmp.size() - 1 );
+    if( written < 0 )
+    {
+        return std::wstring();
+    }
+    tmp[ written ] = '\0';
+
+    char actualpath [PATH_MAX];
+    char* path = realpath(&tmp[0], actualpath);
+    return std::wstring( CA2W( path ? actualpath : &tmp[0] ) );
 #else
     static_assert( false, "CcpExecutablePath is not implemented" );
 #endif

@@ -16,6 +16,12 @@
 #include <malloc.h>
 #endif
 
+#ifdef __ANDROID__
+#include <cstdio>
+#include <unistd.h>
+#include <sys/resource.h>
+#endif
+
 // We need to initialize the memory system before any other static initializers are executed.
 #ifdef _WIN32
 #pragma warning(suppress:4073)
@@ -790,6 +796,34 @@ bool CcpGetProcessMemoryInfo( CcpProcessMemoryInfo& result )
 	{
 		result.pageFaultCount = size_t( vmEvents.faults );
 		return true;
+	}
+#elif defined(__ANDROID__)
+	// /proc/self/statm reports the process size in pages: field 1 is the total mapped size,
+	// field 2 the resident set. Resident is the counterpart of Windows WorkingSetSize and of
+	// the Mach resident_size above; the mapped total stands in for PagefileUsage, which Linux
+	// does not report per process. Faults come from getrusage, which counts both kinds
+	// separately -- summed here because the field models one number.
+	long pageSize = sysconf( _SC_PAGE_SIZE );
+	unsigned long mapped = 0;
+	unsigned long resident = 0;
+
+	FILE* statm = fopen( "/proc/self/statm", "r" );
+	if( statm )
+	{
+		int read = fscanf( statm, "%lu %lu", &mapped, &resident );
+		fclose( statm );
+		if( read == 2 && pageSize > 0 )
+		{
+			result.workingSetSize = size_t( resident ) * size_t( pageSize );
+			result.pageFileUsage = size_t( mapped ) * size_t( pageSize );
+
+			rusage usage;
+			if( getrusage( RUSAGE_SELF, &usage ) == 0 )
+			{
+				result.pageFaultCount = size_t( usage.ru_minflt + usage.ru_majflt );
+			}
+			return true;
+		}
 	}
 #endif
     return false;

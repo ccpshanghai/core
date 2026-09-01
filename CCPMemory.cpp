@@ -332,9 +332,6 @@ std::atomic<size_t> s_memuse( 0 );
 
 static inline void* CcpPlatformMalloc( size_t size )
 {
-#if defined(__ANDROID__)
-	size += sizeof( size_t );
-#endif
 	void* p = malloc( size );
     if( p )
     {
@@ -345,13 +342,6 @@ static inline void* CcpPlatformMalloc( size_t size )
     	CcpTelemetryTrackAllocation( p, realSize );
 #endif
     }
-#if defined(__ANDROID__)
-	if( p )
-	{
-		*reinterpret_cast<size_t*>( p ) = size - sizeof( size_t );
-		p = reinterpret_cast<size_t*>( p ) + 1;
-	}
-#endif
     return p;
 }
 
@@ -372,9 +362,6 @@ static inline void* CcpPlatformCalloc( size_t items, size_t size )
 
 static inline void CcpPlatformFree( void* p )
 {
-#if defined(__ANDROID__)
-	p = reinterpret_cast<size_t*>( p ) - 1;
-#endif
 #if ENABLE_TELEMETRY_MEMORY_TRACKING
 	CcpTelemetryTrackDeallocation( p );
 #endif
@@ -717,9 +704,12 @@ size_t CCPMSize( void *p )
 		return HeapSize( s_heap, 0, p );
 #elif defined(__APPLE__)
 		return malloc_size( p );
-#elif defined(__ANDROID__)
-        return reinterpret_cast<size_t*>( p )[-1];
 #else
+		// Android included: bionic has had malloc_usable_size since API 17. An earlier
+		// Android-only scheme stashed the requested size in front of every block and
+		// returned the interior pointer -- but CCP_DELETE is a plain `delete`, so every
+		// CCP_NEW/CCP_DELETE pair handed libc free() a pointer 8 bytes past the chunk
+		// start, corrupting the heap. No prefix, no interior pointers.
 		return malloc_usable_size( p );
 #endif
 	}

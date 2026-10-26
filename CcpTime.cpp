@@ -113,6 +113,7 @@ uint64_t CcpGetTickCount()
 #else
 
 #include <time.h>
+#include <sys/time.h>
 
 uint64_t CcpGetTimestamp()
 {

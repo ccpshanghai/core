@@ -43,6 +43,19 @@
 	{
 		sched_yield();
 	}
+#elif defined( __linux__ )
+	#include <pthread.h>
+	#include <sched.h>
+	#include <sys/types.h>
+	// glibc's gettid / SYS_gettid is the kernel tid. Not a Mach port, and not Android:
+	// that branch is above, and __ANDROID__ is also __linux__.
+	typedef pid_t CcpThreadId_t;
+	typedef pthread_t CcpThreadHandle_t;
+
+	inline void CcpThreadYield()
+	{
+		sched_yield();
+	}
 #else
 #error "Unsupported platform!"
 #endif

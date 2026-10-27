@@ -6,6 +6,8 @@
 #include "include/CcpTelemetry.h"
 #include "CcpMemoryTrackerMutex.h"
 
+#include <atomic>
+
 #ifdef __APPLE__
 #include <malloc/malloc.h>
 #include <mach/mach.h>
@@ -16,7 +18,7 @@
 #include <malloc.h>
 #endif
 
-#ifdef __ANDROID__
+#if defined( __linux__ )
 #include <cstdio>
 #include <unistd.h>
 #include <sys/resource.h>
@@ -787,7 +789,7 @@ bool CcpGetProcessMemoryInfo( CcpProcessMemoryInfo& result )
 		result.pageFaultCount = size_t( vmEvents.faults );
 		return true;
 	}
-#elif defined(__ANDROID__)
+#elif defined( __linux__ )
 	// /proc/self/statm reports the process size in pages: field 1 is the total mapped size,
 	// field 2 the resident set. Resident is the counterpart of Windows WorkingSetSize and of
 	// the Mach resident_size above; the mapped total stands in for PagefileUsage, which Linux

@@ -16,6 +16,12 @@
 #include <malloc.h>
 #endif
 
+#ifdef __ANDROID__
+#include <cstdio>
+#include <unistd.h>
+#include <sys/resource.h>
+#endif
+
 // We need to initialize the memory system before any other static initializers are executed.
 #ifdef _WIN32
 #pragma warning(suppress:4073)
@@ -326,9 +332,6 @@ std::atomic<size_t> s_memuse( 0 );
 
 static inline void* CcpPlatformMalloc( size_t size )
 {
-#if defined(__ANDROID__)
-	size += sizeof( size_t );
-#endif
 	void* p = malloc( size );
     if( p )
     {
@@ -339,13 +342,6 @@ static inline void* CcpPlatformMalloc( size_t size )
     	CcpTelemetryTrackAllocation( p, realSize );
 #endif
     }
-#if defined(__ANDROID__)
-	if( p )
-	{
-		*reinterpret_cast<size_t*>( p ) = size - sizeof( size_t );
-		p = reinterpret_cast<size_t*>( p ) + 1;
-	}
-#endif
     return p;
 }
 
@@ -366,9 +362,6 @@ static inline void* CcpPlatformCalloc( size_t items, size_t size )
 
 static inline void CcpPlatformFree( void* p )
 {
-#if defined(__ANDROID__)
-	p = reinterpret_cast<size_t*>( p ) - 1;
-#endif
 #if ENABLE_TELEMETRY_MEMORY_TRACKING
 	CcpTelemetryTrackDeallocation( p );
 #endif
@@ -711,9 +704,12 @@ size_t CCPMSize( void *p )
 		return HeapSize( s_heap, 0, p );
 #elif defined(__APPLE__)
 		return malloc_size( p );
-#elif defined(__ANDROID__)
-        return reinterpret_cast<size_t*>( p )[-1];
 #else
+		// Android included: bionic has had malloc_usable_size since API 17. An earlier
+		// Android-only scheme stashed the requested size in front of every block and
+		// returned the interior pointer -- but CCP_DELETE is a plain `delete`, so every
+		// CCP_NEW/CCP_DELETE pair handed libc free() a pointer 8 bytes past the chunk
+		// start, corrupting the heap. No prefix, no interior pointers.
 		return malloc_usable_size( p );
 #endif
 	}
@@ -790,6 +786,34 @@ bool CcpGetProcessMemoryInfo( CcpProcessMemoryInfo& result )
 	{
 		result.pageFaultCount = size_t( vmEvents.faults );
 		return true;
+	}
+#elif defined(__ANDROID__)
+	// /proc/self/statm reports the process size in pages: field 1 is the total mapped size,
+	// field 2 the resident set. Resident is the counterpart of Windows WorkingSetSize and of
+	// the Mach resident_size above; the mapped total stands in for PagefileUsage, which Linux
+	// does not report per process. Faults come from getrusage, which counts both kinds
+	// separately -- summed here because the field models one number.
+	long pageSize = sysconf( _SC_PAGE_SIZE );
+	unsigned long mapped = 0;
+	unsigned long resident = 0;
+
+	FILE* statm = fopen( "/proc/self/statm", "r" );
+	if( statm )
+	{
+		int read = fscanf( statm, "%lu %lu", &mapped, &resident );
+		fclose( statm );
+		if( read == 2 && pageSize > 0 )
+		{
+			result.workingSetSize = size_t( resident ) * size_t( pageSize );
+			result.pageFileUsage = size_t( mapped ) * size_t( pageSize );
+
+			rusage usage;
+			if( getrusage( RUSAGE_SELF, &usage ) == 0 )
+			{
+				result.pageFaultCount = size_t( usage.ru_minflt + usage.ru_majflt );
+			}
+			return true;
+		}
 	}
 #endif
     return false;

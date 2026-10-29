@@ -101,6 +101,7 @@ if(APPLE)
     externalize_apple_debuginfo(CcpCore)
 endif()
 target_link_libraries(CcpCore PUBLIC $<$<PLATFORM_ID:Darwin>:-framework\ AppKit>)
+target_link_libraries(CcpCore PUBLIC $<$<BOOL:${APPLE}>:-framework\ Foundation>)
 
 if(WITH_TELEMETRY)
     message(STATUS "Enabling profiler integration")

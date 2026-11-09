@@ -201,7 +201,7 @@ bool CcpIsDebuggerPresent()
     return IsDebuggerPresent() != 0;
 }
 
-#elif __ANDROID__
+#elif defined( __linux__ )
 
 #include <cstdio>
 #include <cstring>

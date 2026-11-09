@@ -2,6 +2,8 @@
 
 #include "include/CcpSemaphore.h"
 
+#include <cstring>
+
 #include "tracy/TracyC.h"
 
 // OS specific includes:

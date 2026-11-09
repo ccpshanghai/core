@@ -301,7 +301,7 @@ void CCPCallstack::Enumerate( void ( *callback )( size_t codePointer, const char
 {
 }
 
-#else
+#elif defined( __APPLE__ ) || defined( __linux__ )
 
 #include <execinfo.h>
 #include <cxxabi.h>

@@ -101,7 +101,7 @@ off_t CcpTell( int fd )
 int ConvertShareMode( CcpShareMode shareMode )
 {
 	int shflag = 0;
-#ifndef __ANDROID__
+#if !defined( __linux__ )
 	switch( shareMode )
 	{
 	case CCP_SM_NOSHARING:
@@ -220,7 +220,7 @@ bool CcpRenameFile( const std::wstring& src, const std::wstring& dst )
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #endif
-#ifdef __ANDROID__
+#if defined( __linux__ )
 #include <limits.h>
 #endif
 #endif
@@ -741,7 +741,7 @@ std::wstring CcpExecutablePath()
     char actualpath [PATH_MAX];
     char* path = realpath(&tmp[0], actualpath);
     return std::wstring( CA2W( actualpath ) );
-#elif defined(__ANDROID__)
+#elif defined( __linux__ )
     // No _NSGetExecutablePath outside Apple. /proc/self/exe is the Linux and bionic
     // equivalent, and is already the resolved path, so realpath only normalises it.
     // readlink does not terminate, and returns -1 rather than 0 on failure.

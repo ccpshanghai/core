@@ -110,7 +110,7 @@ bool CcpGetThreadTimes( int64_t& kernelTime, int64_t& userTime )
     return GetThreadTimes( GetCurrentThread(), &dummy, &dummy, (LPFILETIME)&kernelTime, (LPFILETIME)&userTime ) != 0;
 }
 
-#elif __APPLE__ || __ANDROID__
+#elif defined( __APPLE__ ) || defined( __linux__ )
 
 // One branch for both, because it is pthreads either way: of the 210 lines below only thread
 // identity and per-thread CPU times are Mach-specific, and bionic's missing pthread_cancel
@@ -124,6 +124,9 @@ bool CcpGetThreadTimes( int64_t& kernelTime, int64_t& userTime )
 #include <sys/resource.h>
 #include <unistd.h>
 #include <atomic>
+#if defined( __linux__ ) && !defined( __ANDROID__ )
+#include <sys/syscall.h>
+#endif
 #endif
 
 namespace
@@ -143,10 +146,12 @@ CcpThreadId_t CcpGetCurrentThreadId()
 {
 #if __APPLE__
 	return pthread_mach_thread_np(pthread_self());
-#else
+#elif defined( __ANDROID__ )
 	// The kernel tid, which is what CcpThreadId_t is a typedef for on Android. Unlike a Mach
 	// port name it is also the number logcat, /proc and every Android profiler show.
 	return gettid();
+#else
+	return static_cast<pid_t>( syscall( SYS_gettid ) );
 #endif
 }
 
@@ -399,15 +404,15 @@ void CcpThreadSleep( uint32_t sleepTimeInMs )
 
 void CcpKillThread( CcpThreadHandle_t threadHandle )
 {
-#if __APPLE__
-    pthread_cancel( threadHandle );
-#else
+#if defined( __ANDROID__ )
     // bionic implements no thread cancellation at all, deliberately: the position is that
     // cancelling a thread cannot be made safe. pthread_kill would only deliver a signal, and
     // tearing down a thread that holds a lock is exactly what the omission prevents. Nothing
     // in the mobile build calls this; anything that needs it wants a cooperative exit flag.
     ( void )threadHandle;
     CCP_LOGERR( "CcpKillThread does nothing on Android: bionic has no pthread_cancel" );
+#else
+    pthread_cancel( threadHandle );
 #endif
 }
 

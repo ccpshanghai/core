@@ -41,7 +41,11 @@ bool s_guardAllocations = false;
 
 CcpMemoryTrackerMutex& GetTrackingMutex()
 {
-	static CcpMemoryTrackerMutex s_trackingGuard;
+	// Never destroyed: statics constructed before the first tracked allocation (the CcpMutex name
+	// registry's std::map, for one) are destroyed after a function-local static made at that
+	// allocation, and free through CCPFreeWithTracking, which locks this mutex. glibc lets a
+	// destroyed mutex be locked; bionic's FORTIFY aborts (carbon-bind Android: exit() after boot).
+	static CcpMemoryTrackerMutex& s_trackingGuard = *new CcpMemoryTrackerMutex;
 	return s_trackingGuard;
 }
 

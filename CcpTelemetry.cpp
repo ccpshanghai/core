@@ -39,8 +39,10 @@ FiberNameStore s_fiberNameStore; // Persisted fiber name string store, including
 
 thread_local FiberNameStore::const_iterator t_activeFiber{ s_fiberNameStore.end() }; // default to having no fiber
 
-template<>
-struct std::less<FiberNameStore::const_iterator>
+// Orders fiber-name iterators by the address of their persisted string. A named comparator rather
+// than a std::less specialization: libc++ (Xcode 27) treats std::less<T> as `<` and compares map keys
+// through std::less<void>, which a set iterator does not support.
+struct FiberNameLess
 {
 	bool operator()(const FiberNameStore::const_iterator& lhs, const FiberNameStore::const_iterator& rhs) const
 	{
@@ -48,7 +50,7 @@ struct std::less<FiberNameStore::const_iterator>
 	}
 };
 
-typedef std::map<FiberNameStore::const_iterator, std::stack<TelemetryZone>> TaskletZoneStore;
+typedef std::map<FiberNameStore::const_iterator, std::stack<TelemetryZone>, FiberNameLess> TaskletZoneStore;
 thread_local TaskletZoneStore t_taskletZoneStore; // Per-thread record of zones instrumented from python
 thread_local TaskletZoneStore::iterator t_activeTaskletZoneStore{ t_taskletZoneStore.end() };
 thread_local std::set<void*> t_manuallyTrackedZones; // Keep track of zones created through `CcpTelemetryEnterZone` to ensure that we only pop off the zone store's stack when leaving a manually created zone

@@ -51,7 +51,7 @@ class CarbonBuildMacOS(buildName: String, configType: String, preset: String, ag
     id(buildName.toId())
     name = buildName
 
-    artifactRules = "%env.CMAKE_INSTALL_PREFIX%"
+    artifactRules = "%env.CMAKE_INSTALL_PREFIX% => artifact.zip"
 
     params {
         param("env.SENTRY_CLI_DEBUG_SYMBOL_TYPE", "dsym")
@@ -126,12 +126,6 @@ class CarbonBuildMacOS(buildName: String, configType: String, preset: String, ag
             name = "Upload symbols to sentry"
             path = "sentry-cli"
             arguments = "upload-dif --wait %env.CMAKE_BUILD_FOLDER%"
-            param("script.content", """
-                #!/usr/bin/env bash -eu
-                filesWithSymbols = (
-                  # insert your binary files with symbols here!
-                )
-            """.trimIndent())
         }
     }
 
@@ -152,7 +146,7 @@ class CarbonBuildMacOS(buildName: String, configType: String, preset: String, ag
                 authType = token {
                     token = "%GITHUB_CARBON_PAT%"
                 }
-                filterAuthorRole = PullRequests.GitHubRoleFilter.MEMBER
+                filterAuthorRole = PullRequests.GitHubRoleFilter.EVERYBODY
             }
         }
         commitStatusPublisher {
@@ -175,7 +169,7 @@ class CarbonBuildMacOS(buildName: String, configType: String, preset: String, ag
             failBuild = true
         }
         sshAgent {
-            teamcitySshKey = "ccpgames-evetech GitHub"
+            teamcitySshKey = "ccpgames-carbon"
         }
         provideAwsCredentials {
             awsConnectionId = "Carbon_AwsVcpkgBinaryCacheServiceAccount"
@@ -187,5 +181,3 @@ class CarbonBuildMacOS(buildName: String, configType: String, preset: String, ag
         startsWith("teamcity.agent.jvm.os.arch", agentArchitecture)
     }
 })
-
-

@@ -30,7 +30,7 @@ std::string WideToUTF8( const wchar_t* wideString )
 #include <wchar.h>
 #include <stdlib.h>
 #include <string.h>
-#include "CCPMemory.h"
+#include "CcpMemory.h"
 
 
 BlueConvertWideToAscii::BlueConvertWideToAscii( const wchar_t* src ) : m_converted( nullptr )
@@ -104,10 +104,11 @@ void BlueConvertAsciiToWide::Init( const char* src )
 	m_converted[sizeNeeded] = 0;
 }
 
-#ifndef __APPLE__
+#if defined(__ANDROID__)
 
 // On Apple these two live in StringConversions.mm, which CMakeLists.txt only compiles
-// under if(APPLE), so every other non-Windows platform links with them missing.
+// under if(APPLE). Desktop Linux uses the iconv versions further down; Android, which
+// also defines __linux__, keeps these and is excluded from the iconv block.
 //
 // The .mm implementation converts through NSString using UTF32LE, i.e. it assumes a
 // 4-byte wchar_t. bionic agrees, and its only supported locale is C.UTF-8, so the
@@ -152,4 +153,74 @@ std::string WideToUTF8( const wchar_t* wideString )
 
 #endif
 
+#endif
+
+#if __linux__ && !defined(__ANDROID__)
+#include <iconv.h>
+
+std::wstring UTF8ToWide(const char* utf8String)
+{
+	std::wstring result;
+
+	const auto descriptor = iconv_open("WCHAR_T", "UTF-8");
+	if (descriptor == reinterpret_cast<iconv_t>(-1))
+	{
+		CCP_LOGERR("Failed to create code conversion descriptor from UTF-8 to WCHAR_T: [errno: %d]", errno);
+		return result;
+	}
+
+	std::string_view input = utf8String;
+	auto inBytesLeft = input.size();
+	auto inputBuffer = const_cast<char*>(input.data()); // iconv will increment buffer
+
+	auto outputBufferSize = input.size() * sizeof(wchar_t); // Size is in bytes
+	result.resize(outputBufferSize);
+	auto outputBuffer = reinterpret_cast<char*>(result.data()); // Calculate buffer position in case backing buffer is reallocated
+	auto outBytesLeft = outputBufferSize;
+	if (iconv(descriptor, &inputBuffer , &inBytesLeft, &outputBuffer, &outBytesLeft) == static_cast<size_t>(-1))
+	{
+		CCP_LOGERR("Failed to convert from WCHAR_T to UTF-8: [errno: %d, inBytesLeft: %lu, outBytesLeft: %lu, outputBufferSize: %lu]", errno, inBytesLeft, outBytesLeft, outputBufferSize);
+		iconv_close(descriptor);
+		return result;
+	}
+
+	iconv_close(descriptor);
+
+	return result;
+}
+
+std::string WideToUTF8( const wchar_t* wideString )
+{
+	std::string result;
+
+	const auto descriptor = iconv_open("UTF-8", "WCHAR_T");
+	if (descriptor == reinterpret_cast<iconv_t>(-1))
+	{
+		CCP_LOGERR("Failed to create code conversion descriptor from UTF-8 to WCHAR_T: [errno: %d]", errno);
+		return result;
+	}
+
+	const std::wstring_view input = wideString;
+	auto inBytesLeft = input.size() * sizeof(wchar_t);
+	auto inputBuffer = const_cast<char*>(reinterpret_cast<const char*>(input.data())); // iconv will increment buffer
+
+	// UTF8 code points require four bytes at most
+	auto outputBufferSize = input.size() * 4; // Size is in bytes
+	result.resize(outputBufferSize);
+	auto outputBuffer = result.data(); // Calculate buffer position in case backing buffer is reallocated
+	auto outBytesLeft = outputBufferSize;
+	if (iconv(descriptor, &inputBuffer , &inBytesLeft, &outputBuffer, &outBytesLeft) == static_cast<size_t>(-1))
+	{
+		CCP_LOGERR("Failed to convert from UTF-8 to WCHAR_T: [errno: %d, inBytesLeft: %lu, outBytesLeft: %lu, outputBufferSize: %lu]", errno, inBytesLeft, outBytesLeft, outputBufferSize);
+		iconv_close(descriptor);
+		return result;
+	}
+
+	iconv_close(descriptor);
+
+	// The result must be truncated to the number of character elements read into the output buffer
+	result.resize(outputBufferSize - outBytesLeft);
+
+	return result;
+}
 #endif

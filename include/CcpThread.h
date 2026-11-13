@@ -9,7 +9,7 @@
 #include <type_traits>
 #include <exception>
 #include <algorithm>
-#include "CCPMemory.h"
+#include "CcpMemory.h"
 
 #if _WIN32
 	#include <windows.h>
@@ -37,6 +37,16 @@
 	// bionic identifies a thread by its kernel tid, where Mach uses a port name. Both are
 	// opaque integers used only for comparison and logging, so pid_t serves the same role.
 	typedef pid_t CcpThreadId_t;
+	typedef pthread_t CcpThreadHandle_t;
+
+	inline void CcpThreadYield()
+	{
+		sched_yield();
+	}
+#elif  __linux__
+	#include <pthread.h>
+	#include <sched.h>
+	typedef pthread_t CcpThreadId_t;
 	typedef pthread_t CcpThreadHandle_t;
 
 	inline void CcpThreadYield()

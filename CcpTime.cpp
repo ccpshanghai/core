@@ -1,13 +1,16 @@
 // Copyright © 2013 CCP ehf.
 
 #include "include/CcpTime.h"
-#include "include/CCPAssert.h"
+#include "include/CcpAssert.h"
 #include <cfloat>
 #include <cmath>
 
+#if _POSIX_VERSION
+#include <sys/time.h>
+#endif
+
 #ifdef _WIN32
 
-#include <windows.h>
 uint64_t CcpGetTimestamp()
 {
 	static LARGE_INTEGER last = {0};
@@ -68,8 +71,6 @@ CcpTime TimeNow()
 #elif defined(__APPLE__)
 
 #include <mach/mach_time.h>
-#include <time.h>
-#include <sys/time.h>
 
 uint64_t CcpGetTimestamp()
 {
@@ -111,8 +112,6 @@ uint64_t CcpGetTickCount()
 }
 
 #else
-
-#include <time.h>
 
 uint64_t CcpGetTimestamp()
 {

@@ -1,6 +1,6 @@
 // Copyright © 2025 CCP ehf.
 
-#include "include/CCPAssert.h"
+#include "include/CcpAssert.h"
 #include "include/CcpSecureCrt.h"
 
 #ifdef _WIN32
@@ -16,6 +16,10 @@
 #include <CoreFoundation/CoreFoundation.h>
 #endif
 
+#if __linux__
+#include <filesystem>
+#include <fstream>
+#endif
 
 #define ASSERT_USE_THREAD 0
 
@@ -158,7 +162,6 @@ CCPAssertResult CCPAssertHelper::Handle( const char* pMsg, const char* pFile, in
 #ifdef __APPLE__
 
 #include <sys/types.h>
-#include <unistd.h>
 #include <sys/sysctl.h>
 
 // From https://developer.apple.com/library/mac/qa/qa1361/_index.html
@@ -201,36 +204,30 @@ bool CcpIsDebuggerPresent()
     return IsDebuggerPresent() != 0;
 }
 
-#elif __ANDROID__
-
-#include <cstdio>
-#include <cstring>
-
-// Linux has no P_TRACED flag to read and no IsDebuggerPresent. The tracer, if any, is named
-// in /proc/self/status as TracerPid, which is 0 when nothing is attached. This is what every
-// Android debugger check does, and it costs one small read.
+#elif __linux__
 bool CcpIsDebuggerPresent()
 {
-    FILE* status = fopen( "/proc/self/status", "r" );
-    if( !status )
-    {
-        return false;
-    }
+	// Debugger is attached if TracerPid in /proc/self/status is set to a non-zero value
+	// /proc/self/status needs to be read with each call since a debugger may attach/detach at any moment
+	constexpr auto path = "/proc/self/status";
+	std::ifstream stream(path, std::ios::in | std::ios::binary);
+	if (!stream.good())
+	{
+		return false;
+	}
 
-    bool traced = false;
-    char line[256];
-    while( fgets( line, sizeof( line ), status ) )
-    {
-        if( strncmp( line, "TracerPid:", 10 ) == 0 )
-        {
-            traced = atoi( line + 10 ) != 0;
-            break;
-        }
-    }
+	constexpr auto lookupString = "TracerPid:";
+	std::string line(256, '\0');
+	while (getline(stream, line)) // getline clears previous line contents via str.erase()
+	{
+		if (const auto position = line.find(lookupString); position != std::string::npos)
+		{
+			const auto offsetToTracer = line.data() + position + strlen(lookupString) + 1; // Assume value is separated by a single ASCII character
+			return std::stoi(offsetToTracer) != 0;
+		}
+	}
 
-    fclose( status );
-    return traced;
+	return false;
 }
-
 #endif
 

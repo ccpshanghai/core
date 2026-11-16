@@ -2,7 +2,9 @@
 
 #include "include/CcpSemaphore.h"
 
+#if CCP_TELEMETRY_ENABLED
 #include "tracy/TracyC.h"
+#endif
 
 // OS specific includes:
 #ifdef _WIN32
@@ -13,8 +15,11 @@
 #include <mach/mach.h>
 	using NativeHandle = semaphore_t;
 #else
+#include <time.h>
 	using NativeHandle = sem_t;
 #endif
+
+#include "include/CcpSecureCrt.h"
 
 struct CcpSemaphore::Private
 {
@@ -60,6 +65,7 @@ CcpSemaphore::CcpSemaphore( const char* semaphoreName, uint32_t initialCount, ui
 
 namespace
 {
+#if CCP_TELEMETRY_ENABLED
 	void AnnounceSemaphoreToTelemetry( TracyCLockCtx& ctx, const char* name )
 	{
 		// Lazy initialization pattern because there are many instances which are created statically,
@@ -72,6 +78,7 @@ namespace
 			}
 		}
 	}
+#endif
 }
 
 // Preferred constructor, with default value overloads (see header file for details)
@@ -169,9 +176,18 @@ bool CcpSemaphore::TimedWait( uint32_t timeoutInMs )
 	const bool result = semaphore_timedwait( m_impl->semaphore, mts ) == KERN_SUCCESS;
 #else
 	timespec ts;
-	ts.tv_sec = timeoutInMs / 1000;
-	ts.tv_nsec = (timeoutInMs % 1000) * 1000000;
-	const bool result = sem_timedwait( &m_impl->semaphore, &ts ) == 0;
+	bool result = false;
+	if ( clock_gettime( CLOCK_REALTIME, &ts ) == 0 )
+	{
+		ts.tv_sec += timeoutInMs / 1000;
+		ts.tv_nsec += static_cast<long>( timeoutInMs % 1000 ) * 1000000L;
+		if ( ts.tv_nsec >= 1000000000L )
+		{
+			ts.tv_sec += ts.tv_nsec / 1000000000L;
+			ts.tv_nsec %= 1000000000L;
+		}
+		result = sem_timedwait( &m_impl->semaphore, &ts ) == 0;
+	}
 #endif
 
 #if CCP_TELEMETRY_ENABLED

@@ -2,6 +2,30 @@
 
 cmake_minimum_required(VERSION 3.19)
 
+option(WITH_TELEMETRY "Enable profiler integration" ON)
+option(BUILD_TESTING "Build and run tests. Enabled by default." ON)
+
+# Determine if/when to generate/build documentation. The rules are as follows:
+# - If running locally - Build documentation is OFF by default
+# - If running on a build agent (TeamCity) - Build documentation is ON by default
+# - If -DBUILD_DOCUMENTATION=ON/OFF flag is explicitly set, use it.
+set(BUILD_DOCUMENTATION_DEFAULT_FLAG OFF)
+if(DEFINED ENV{TEAMCITY_VERSION})
+    set(BUILD_DOCUMENTATION_DEFAULT_FLAG ON)
+endif()
+message(STATUS "Document generation settings: default=${BUILD_DOCUMENTATION_DEFAULT_FLAG}, option BUILD_DOCUMENTATION=${BUILD_DOCUMENTATION}")
+option(BUILD_DOCUMENTATION "Build Documentation" ${BUILD_DOCUMENTATION_DEFAULT_FLAG})
+
+if(WITH_TELEMETRY)
+    list(APPEND VCPKG_MANIFEST_FEATURES "telemetry")
+endif()
+if(BUILD_TESTING)
+    list(APPEND VCPKG_MANIFEST_FEATURES "tests")
+endif()
+if(BUILD_DOCUMENTATION)
+    list(APPEND VCPKG_MANIFEST_FEATURES "docs")
+endif()
+
 project(CcpCore)
 
 set(CCP_TOOLSET ${CMAKE_GENERATOR_TOOLSET})
@@ -13,19 +37,19 @@ include(cmake/CcpDocsGenerator.cmake)
 include(cmake/CcpPackageConfigHelpers.cmake)
 include(cmake/CcpBuildConfigurations.cmake)
 
-option(WITH_TELEMETRY "Enable profiler integration" ON)
 option(WITH_MEMORY_TRACKING "Enable tracking of memory allocations." ON)
 
 set(SRC_FILES
         CcpCore.cpp
-        CCPAssert.cpp
-        CCPCallstack.cpp
-        CCPDefines.cpp
+        CcpAssert.cpp
+        CcpCallstack.cpp
+        CcpColorConstants.cpp
+        CcpDefines.cpp
         CcpFileUtils.cpp
-        CCPHash.cpp
-        CCPMemory.cpp
-        CCPMemoryTracker.cpp
-        CCPMemoryTrackerMutex.h
+        CcpHash.cpp
+        CcpMemory.cpp
+        CcpMemoryTracker.cpp
+        CcpMemoryTrackerMutex.h
         CcpMutex.cpp
         CcpProcess.cpp
         CcpSecureCrt.cpp
@@ -36,7 +60,7 @@ set(SRC_FILES
         CcpThreadClass.cpp
         CcpTime.cpp
         StringConversions.cpp
-        CCPLog.cpp
+        CcpLog.cpp
 )
 
 add_library(CcpCore SHARED ${SRC_FILES})
@@ -58,18 +82,18 @@ generate_export_header(CcpCore
 
 set(PUBLIC_HEADER_FILES
         include/CachedAllocator.h
-        include/CCPAssert.h
+        include/CcpAssert.h
         include/CcpAtomic.h
-        include/CCPCallstack.h
+        include/CcpCallstack.h
         include/CcpColorConstants.h
         include/CcpCore.h
         include/CcpCrash.h
         include/CcpDefines.h
         include/CcpFileUtils.h
-        include/CCPHash.h
+        include/CcpHash.h
         include/CcpMacros.h
-        include/CCPMemory.h
-        include/CCPMemoryTracker.h
+        include/CcpMemory.h
+        include/CcpMemoryTracker.h
         include/CcpMutex.h
         include/CcpPairingHeap.h
         include/CcpProcess.h
@@ -85,7 +109,7 @@ set(PUBLIC_HEADER_FILES
         include/ICrashReporter.h
         include/StringConversions.h
         include/TrackableContainer.h
-        include/CCPLog.h
+        include/CcpLog.h
         ${CMAKE_CURRENT_BINARY_DIR}/carbon_core_export.h
 )
 target_sources(CcpCore PRIVATE ${PUBLIC_HEADER_FILES})
@@ -128,7 +152,6 @@ else()
 endif()
 
 if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
-    option(BUILD_TESTING "Build and run tests. Enabled by default." ON)
     include(CTest)
     if(BUILD_TESTING)
         add_subdirectory(tests)
@@ -154,17 +177,6 @@ target_include_directories(CcpCore
 
 # Provide an install target iff this is the top level project only
 if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
-    # Determine if/when to generate/build documentation. The rules are as follows:
-    # - If running locally - Build documentation is OFF by default
-    # - If running on a build agent (TeamCity) - Build documentation is ON by default
-    # - If -DBUILD_DOCUMENTATION=ON/OFF flag is explicitly set, use it.
-    set(BUILD_DOCUMENTATION_DEFAULT_FLAG OFF)
-    if(DEFINED ENV{TEAMCITY_VERSION})
-        set(BUILD_DOCUMENTATION_DEFAULT_FLAG ON)
-    endif()
-    message(STATUS "Document generation settings: default=${BUILD_DOCUMENTATION_DEFAULT_FLAG}, option BUILD_DOCUMENTATION=${BUILD_DOCUMENTATION}")
-    option(BUILD_DOCUMENTATION "Build Documentation" ${BUILD_DOCUMENTATION_DEFAULT_FLAG})
-
     if(BUILD_DOCUMENTATION)
         find_package(Python3 COMPONENTS Interpreter REQUIRED)
         include(cmake/CcpDocsGenerator.cmake)
@@ -178,6 +190,16 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
         set(SPHINX_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/doc/source)
         set(SPHINX_BUILD ${CMAKE_CURRENT_BINARY_DIR}/doc/build)
 
+        get_target_property(CORE_COMPILE_DEFINITIONS CcpCore COMPILE_DEFINITIONS)
+        list(TRANSFORM CORE_COMPILE_DEFINITIONS GENEX_STRIP)
+        list(APPEND CORE_COMPILE_DEFINITIONS
+                CARBON_CORE_API=
+                CARBON_CORE_DEPRECATED_EXPORT=
+                NOINLINE=
+                CCPLOG_PRINTF_FORMAT=
+        )
+        list(JOIN CORE_COMPILE_DEFINITIONS " \\\n" CORE_COMPILE_DEFINITIONS)
+
         create_carbon_docs_sphinx_target(
             PYTHON_EXE ${Python3_EXECUTABLE}
             VENV_NAME docs_generation_venv
@@ -188,6 +210,7 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
             SPHINX_TARGET_NAME Sphinx
             DOXYGEN_TARGET_NAME Doxygen
             INSTALL_DESTINATION documentation/carbon-core
+            EXTRA_COMPILE_DEFINITIONS ${CORE_COMPILE_DEFINITIONS}
         )
     endif()
 
@@ -222,6 +245,23 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
                 EXPORT_DLL
         )
         install(FILES ${CMAKE_CURRENT_BINARY_DIR}/CcpCoreConfig.cmake DESTINATION .)
+
+        # Install the CLI and GUI tools (and their dependent dlls) for Tracy
+        # Only do so for top-level MONOLITH builds/installs.
+        # Exclude *.pdb files on Windows, but copy everything on macOS
+        if(WITH_TELEMETRY)
+            if(WIN32)
+                set(TRACY_TOOLS_FILTER FILES_MATCHING PATTERN "*.exe" PATTERN "*.dll")
+            else()
+                set(TRACY_TOOLS_FILTER)
+            endif()
+            install(
+                    DIRECTORY "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/tools/tracy/"
+                    DESTINATION bin/${CCP_PLATFORM}/${CCP_ARCHITECTURE}/${CCP_TOOLSET}/tools/tracy
+                    ${TRACY_TOOLS_FILTER}
+            )
+        endif()
+
     else() # VCPKG installation mode
         # Install rule to ensure that our runtime and linker files are in the vcpkg structure
         install(

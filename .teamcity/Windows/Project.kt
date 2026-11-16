@@ -25,11 +25,6 @@ val Internal = CarbonBuildWindows("Internal Windows", "Internal", "x64-windows-i
 val TrinityDev = CarbonBuildWindows("TrinityDev Windows", "TrinityDev", "x64-windows-trinitydev")
 val Release = CarbonBuildWindows("Release Windows", "Release", "x64-windows-release")
 
-val Debug_v145 = CarbonBuildWindows("Debug Windows v145", "Debug", "x64-windows-v145-debug", "-arch=x64 -vcvars_ver=14.51")
-val Internal_v145 = CarbonBuildWindows("Internal Windows v145", "Internal", "x64-windows-v145-internal", "-arch=x64 -vcvars_ver=14.51")
-val TrinityDev_v145 = CarbonBuildWindows("TrinityDev Windows v145", "TrinityDev", "x64-windows-v145-trinitydev", "-arch=x64 -vcvars_ver=14.51")
-val Release_v145 = CarbonBuildWindows("Release Windows v145", "Release", "x64-windows-v145-release", "-arch=x64 -vcvars_ver=14.51")
-
 object Project : Project({
     id("Windows")
     name = "Windows"
@@ -38,19 +33,14 @@ object Project : Project({
     buildType(Internal)
     buildType(TrinityDev)
     buildType(Release)
-
-    buildType(Debug_v145)
-    buildType(Internal_v145)
-    buildType(TrinityDev_v145)
-    buildType(Release_v145)
 })
 
 
-class CarbonBuildWindows(buildName: String, configType: String, preset: String, vsDevBatSwitches: String = "-arch=x64 -vcvars_ver=14.1") : BuildType({
+class CarbonBuildWindows(buildName: String, configType: String, preset: String, vsDevBatSwitches: String = "-arch=x64 -vcvars_ver=14.51") : BuildType({
     id(buildName.toId())
     this.name = buildName
 
-    artifactRules = "%env.CMAKE_INSTALL_PREFIX%"
+    artifactRules = "%env.CMAKE_INSTALL_PREFIX% => artifact.zip"
 
     params {
         param("env.GIT_TAG_HASH_OVERRIDE", "")
@@ -130,12 +120,6 @@ class CarbonBuildWindows(buildName: String, configType: String, preset: String, 
             name = "Upload symbols to sentry"
             path = "sentry-cli"
             arguments = "upload-dif --wait %env.CMAKE_BUILD_FOLDER%"
-            param("script.content", """
-                #!/usr/bin/env bash -eu
-                filesWithSymbols = (
-                  # insert your binary files with symbols here!
-                )
-            """.trimIndent())
         }
         script {
             name = "(Windows) CMD Upload debug symbols to internal symbol server"
@@ -217,7 +201,7 @@ class CarbonBuildWindows(buildName: String, configType: String, preset: String, 
                 authType = token {
                     token = "%GITHUB_CARBON_PAT%"
                 }
-                filterAuthorRole = PullRequests.GitHubRoleFilter.MEMBER
+                filterAuthorRole = PullRequests.GitHubRoleFilter.EVERYBODY
             }
         }
         commitStatusPublisher {
@@ -240,7 +224,7 @@ class CarbonBuildWindows(buildName: String, configType: String, preset: String, 
             failBuild = true
         }
         sshAgent {
-            teamcitySshKey = "ccpgames-evetech GitHub"
+            teamcitySshKey = "ccpgames-carbon"
         }
         provideAwsCredentials {
             awsConnectionId = "Carbon_AwsVcpkgBinaryCacheServiceAccount"

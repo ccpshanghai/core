@@ -17,7 +17,7 @@
 #include <malloc.h>
 #endif
 
-#ifdef __ANDROID__
+#if defined( __linux__ )
 #include <cstdio>
 #include <unistd.h>
 #include <sys/resource.h>
@@ -40,7 +40,11 @@ bool s_guardAllocations = false;
 
 CcpMemoryTrackerMutex& GetTrackingMutex()
 {
-	static CcpMemoryTrackerMutex s_trackingGuard;
+	// Never destroyed: statics constructed before the first tracked allocation (the CcpMutex name
+	// registry's std::map, for one) are destroyed after a function-local static made at that
+	// allocation, and free through CCPFreeWithTracking, which locks this mutex. glibc lets a
+	// destroyed mutex be locked; bionic's FORTIFY aborts (carbon-bind Android: exit() after boot).
+	static CcpMemoryTrackerMutex& s_trackingGuard = *new CcpMemoryTrackerMutex;
 	return s_trackingGuard;
 }
 
@@ -788,7 +792,7 @@ bool CcpGetProcessMemoryInfo( CcpProcessMemoryInfo& result )
 		result.pageFaultCount = size_t( vmEvents.faults );
 		return true;
 	}
-#elif defined(__ANDROID__)
+#elif defined( __linux__ )
 	// /proc/self/statm reports the process size in pages: field 1 is the total mapped size,
 	// field 2 the resident set. Resident is the counterpart of Windows WorkingSetSize and of
 	// the Mach resident_size above; the mapped total stands in for PagefileUsage, which Linux
